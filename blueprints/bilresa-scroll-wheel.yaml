@@ -1,5 +1,5 @@
 blueprint:
-  name: Bilrea Scroll Controller V1.3
+  name: Bilrea Scroll Controller V1.4
   author: BWagener
   description: >
     Control Lights (Brightness, Temp, Color), Media, or Climate using the Bilrea Smart Scrollwheel remote.
