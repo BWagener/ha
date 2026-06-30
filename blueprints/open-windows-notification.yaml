@@ -117,6 +117,18 @@ blueprint:
           default: ""
           selector:
             text:
+        open_title_prefix:
+          name: Open title prefix
+          description: Prefix used before the area in auto-generated open titles.
+          default: open windows in
+          selector:
+            text:
+        close_title_prefix:
+          name: Close title prefix
+          description: Prefix used before the area in auto-generated close titles.
+          default: close windows in
+          selector:
+            text:
         include_temperatures:
           name: Include indoor/outdoor temperatures
           description: Append current indoor and outdoor values to the notification message.
@@ -171,6 +183,8 @@ variables:
   msg_open: !input open_message
   msg_close: !input close_message
   msg_title: !input notification_title
+  title_prefix_open: !input open_title_prefix
+  title_prefix_close: !input close_title_prefix
   include_temps: !input include_temperatures
   min_interval_minutes: !input min_notification_interval_minutes
   forecast_temp_entity: !input forecast_temperature_entity
@@ -247,8 +261,12 @@ action:
           {% set lines = lines + [entry] %}
         {% endfor %}
         {{ lines | join(' || ') }}
+      default_title_prefix: >
+        {% set prefix = title_prefix_open if action_word | trim == 'open' else title_prefix_close %}
+        {% set prefix = prefix | trim %}
+        {{ prefix if prefix else ('open windows in' if action_word | trim == 'open' else 'close windows in') }}
       default_title: >
-        {{ action_word | trim }} windows in {{ indoor_area if indoor_area else 'indoor area' }}
+        {{ default_title_prefix }} {{ indoor_area if indoor_area else 'indoor area' }}
       notification_title: >
         {% set custom_title = msg_title | trim %}
         {{ custom_title if custom_title else default_title }}
