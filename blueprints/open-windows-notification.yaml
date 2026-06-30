@@ -5,8 +5,7 @@ blueprint:
     Sends a notification when one temperature sensor rises above or falls below another.
     "Open windows" is sent when indoor temperature is above outdoor temperature;
     "Close windows" is sent when indoor temperature is below outdoor temperature.
-    Notifications are sent only to people/device_trackers currently inside the selected zone.
-    Presence entities and notify services are matched by list position.
+    Notifications are sent only to selected mobile app devices currently inside the selected zone.
     Optionally, notifications are only active when the highest forecast temperature
     is at or above a configured threshold.
   domain: automation
@@ -26,26 +25,15 @@ blueprint:
           domain: sensor
           device_class: temperature
     notify_devices:
-      name: Notification devices (ordered)
+      name: Notification devices
       description: >
-        Select one notify device per tracked person/device (for example notify.mobile_app_*).
-        This list is matched by position with Presence entities.
+        Select one or more mobile app devices to notify.
+        Each selected device is notified only if one of its device_tracker entities is in the selected zone.
       default: []
       selector:
         device:
           filter:
             - integration: mobile_app
-          multiple: true
-    presence_entities:
-      name: Presence entities (ordered)
-      description: >
-        Select one or more person/device_tracker entities. This list is matched by position
-        with Notification devices.
-      selector:
-        entity:
-          domain:
-            - person
-            - device_tracker
           multiple: true
     required_zone:
       name: Zone for presence check
@@ -157,7 +145,6 @@ variables:
   indoor_entity: !input indoor_temperature
   outdoor_entity: !input outdoor_temperature
   notify_targets: !input notify_devices
-  presence_targets: !input presence_entities
   required_zone_entity: !input required_zone
   required_zone_object_id: "{{ required_zone_entity.split('.')[1] }}"
   msg_open: !input open_message
@@ -187,6 +174,22 @@ action:
       }}
   - variables:
       indoor_area: "{{ area_name(indoor_entity) }}"
+      zone_filtered_notify_devices: >
+        {% set zone_short_name = required_zone_object_id | lower | trim %}
+        {% set ns = namespace(devices=[]) %}
+        {% for device in notify_targets %}
+          {% set device_status = namespace(in_zone=false) %}
+          {% set trackers = device_entities(device) | select('search', '^device_tracker\\.') | list %}
+          {% for tracker in trackers %}
+            {% if (states(tracker) | string).lower().strip() == zone_short_name %}
+              {% set device_status.in_zone = true %}
+            {% endif %}
+          {% endfor %}
+          {% if device_status.in_zone %}
+            {% set ns.devices = ns.devices + [device] %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.devices }}
       action_word: "{{ 'open' if trigger.id == 'indoor_above_outdoor' else 'close' }}"
       default_title: >
         {{ action_word }} windows in {{ indoor_area if indoor_area else 'indoor area' }}
@@ -227,19 +230,10 @@ action:
           {{ base_message }}
         {% endif %}
   - repeat:
-      for_each: "{{ notify_targets }}"
+      for_each: "{{ zone_filtered_notify_devices }}"
       sequence:
-        - variables:
-            mapped_presence: >
-              {% set idx = repeat.index - 1 %}
-              {{ presence_targets[idx] if idx < (presence_targets | count) else none }}
-        - choose:
-            - conditions:
-                - condition: template
-                  value_template: >
-                    {{ mapped_presence is not none and states(mapped_presence) == required_zone_object_id }}
-              sequence:
-                - service: "{{ repeat.item }}"
-                  data:
-                    title: "{{ notification_title | trim }}"
-                    message: "{{ notification_message | trim }}"
+        - action: "notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}"
+          data:
+            title: "{{ notification_title | trim }}"
+            message: "{{ notification_message | trim }}"
+          continue_on_error: true
