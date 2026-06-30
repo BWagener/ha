@@ -25,20 +25,22 @@ blueprint:
         entity:
           domain: sensor
           device_class: temperature
-    notify_services:
-      name: Notification services (ordered)
+    notify_devices:
+      name: Notification devices (ordered)
       description: >
-        Select one notify entity per tracked person/device (for example notify.mobile_app_*).
+        Select one notify device per tracked person/device (for example notify.mobile_app_*).
         This list is matched by position with Presence entities.
+      default: []
       selector:
-        entity:
-          domain: notify
+        device:
+          filter:
+            - integration: mobile_app
           multiple: true
     presence_entities:
       name: Presence entities (ordered)
       description: >
         Select one or more person/device_tracker entities. This list is matched by position
-        with Notification services.
+        with Notification devices.
       selector:
         entity:
           domain:
@@ -154,7 +156,7 @@ trigger:
 variables:
   indoor_entity: !input indoor_temperature
   outdoor_entity: !input outdoor_temperature
-  notify_targets: !input notify_services
+  notify_targets: !input notify_devices
   presence_targets: !input presence_entities
   required_zone_entity: !input required_zone
   required_zone_object_id: "{{ required_zone_entity.split('.')[1] }}"
