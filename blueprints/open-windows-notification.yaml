@@ -69,7 +69,7 @@ blueprint:
         forecast_threshold:
           name: Forecast activation threshold
           description: Notifications are active only when highest forecast temperature meets this.
-          default: 25
+          default: 21
           selector:
             number:
               min: -30
@@ -180,7 +180,7 @@ action:
             {% set ns.max_temp = t %}
           {% endif %}
         {% endfor %}
-        {{ ns.max_temp is not none and ns.max_temp >= (forecast_threshold_c | float(25)) }}
+        {{ ns.max_temp is not none and ns.max_temp >= (forecast_threshold_c | float(21)) }}
       {% endif %}
   - condition: template
     value_template: >
