@@ -206,6 +206,18 @@ action:
           or seconds_since_last >= cooldown_required_seconds
         }}
       indoor_area: "{{ area_name(indoor_entity) }}"
+      indoor_value_raw: "{{ states(indoor_entity) }}"
+      outdoor_value_raw: "{{ states(outdoor_entity) }}"
+      indoor_num: "{{ states(indoor_entity) | float(none) }}"
+      outdoor_num: "{{ states(outdoor_entity) | float(none) }}"
+      action_word: >
+        {% if indoor_num is not none and outdoor_num is not none %}
+          {% if indoor_num > outdoor_num %}open
+          {% elif indoor_num < outdoor_num %}close
+          {% else %}{{ 'open' if trigger.id == 'indoor_above_outdoor' else 'close' }}{% endif %}
+        {% else %}
+          {{ 'open' if trigger.id == 'indoor_above_outdoor' else 'close' }}
+        {% endif %}
       zone_filtered_notify_devices: >
         {% set zone_short_name = required_zone_object_id | lower | trim %}
         {% set ns = namespace(devices=[]) %}
@@ -235,31 +247,30 @@ action:
           {% set lines = lines + [entry] %}
         {% endfor %}
         {{ lines | join(' || ') }}
-      action_word: "{{ 'open' if trigger.id == 'indoor_above_outdoor' else 'close' }}"
       default_title: >
-        {{ action_word }} windows in {{ indoor_area if indoor_area else 'indoor area' }}
+        {{ action_word | trim }} windows in {{ indoor_area if indoor_area else 'indoor area' }}
       notification_title: >
         {% set custom_title = msg_title | trim %}
         {{ custom_title if custom_title else default_title }}
       notification_message: >
-        {% set custom_message = msg_open if trigger.id == 'indoor_above_outdoor' else msg_close %}
+        {% set custom_message = msg_open if action_word | trim == 'open' else msg_close %}
         {% set custom_message = custom_message | trim %}
-        {% set indoor_value = states(indoor_entity) %}
-        {% set outdoor_value = states(outdoor_entity) %}
+        {% set indoor_value = indoor_value_raw %}
+        {% set outdoor_value = outdoor_value_raw %}
         {% set indoor_unit = state_attr(indoor_entity, 'unit_of_measurement') | default('', true) %}
         {% set outdoor_unit = state_attr(outdoor_entity, 'unit_of_measurement') | default('', true) %}
         {% set has_indoor = indoor_value not in ['unknown', 'unavailable', 'none', 'None', ''] %}
         {% set has_outdoor = outdoor_value not in ['unknown', 'unavailable', 'none', 'None', ''] %}
-        {% set indoor_num = indoor_value | float(0) %}
-        {% set outdoor_num = outdoor_value | float(0) %}
-        {% set indoor_value_1dp = '%.1f' | format(indoor_num) %}
-        {% set outdoor_value_1dp = '%.1f' | format(outdoor_num) %}
+        {% set indoor_num_safe = indoor_num | float(0) %}
+        {% set outdoor_num_safe = outdoor_num | float(0) %}
+        {% set indoor_value_1dp = '%.1f' | format(indoor_num_safe) %}
+        {% set outdoor_value_1dp = '%.1f' | format(outdoor_num_safe) %}
         {% set diff_unit = indoor_unit if indoor_unit else outdoor_unit %}
         {% set detail_parts = [] %}
         {% if custom_message %}
           {% set base_message = custom_message %}
         {% elif has_indoor and has_outdoor %}
-          {% set diff_value = (indoor_num - outdoor_num) | abs %}
+          {% set diff_value = (indoor_num_safe - outdoor_num_safe) | abs %}
           {% set base_message = 'temperature difference: ' ~ ('%.1f' | format(diff_value)) ~ diff_unit %}
         {% else %}
           {% set base_message = 'temperature difference unavailable' %}
@@ -279,7 +290,8 @@ action:
           {{ base_message }}
         {% endif %}
       debug_base_message: >
-        Trigger={{ trigger.id }}, indoor={{ states(indoor_entity) }}, outdoor={{ states(outdoor_entity) }},
+        Trigger={{ trigger.id }}, action_word={{ action_word | trim }},
+        indoor={{ states(indoor_entity) }}, outdoor={{ states(outdoor_entity) }},
         forecast_entity={{ forecast_entity_id if forecast_entity_id else 'disabled' }},
         forecast_temp={{ forecast_temp if forecast_temp is not none else 'n/a' }},
         forecast_threshold={{ forecast_threshold_c }},
