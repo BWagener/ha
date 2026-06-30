@@ -46,8 +46,9 @@ blueprint:
             - device_tracker
           multiple: true
     required_zone:
-      name: Required zone
+      name: Zone for presence check
       description: Notifications are sent only when the mapped presence entity is in this zone.
+      default: zone.home
       selector:
         entity:
           domain: zone
