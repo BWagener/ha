@@ -111,22 +111,18 @@ blueprint:
           default: ""
           selector:
             text:
-        notification_title:
-          name: Notification title
-          description: Optional override for notification title.
-          default: ""
+        open_title_template:
+          name: Open title template
+          description: >
+            Title template used when opening is advised. Use <area> as placeholder.
+          default: open windows in <area>
           selector:
             text:
-        open_title_prefix:
-          name: Open title prefix
-          description: Prefix used before the area in auto-generated open titles.
-          default: open windows in
-          selector:
-            text:
-        close_title_prefix:
-          name: Close title prefix
-          description: Prefix used before the area in auto-generated close titles.
-          default: close windows in
+        close_title_template:
+          name: Close title template
+          description: >
+            Title template used when closing is advised. Use <area> as placeholder.
+          default: close windows in <area>
           selector:
             text:
         include_temperatures:
@@ -182,9 +178,8 @@ variables:
   required_zone_object_id: "{{ required_zone_entity.split('.')[1] }}"
   msg_open: !input open_message
   msg_close: !input close_message
-  msg_title: !input notification_title
-  title_prefix_open: !input open_title_prefix
-  title_prefix_close: !input close_title_prefix
+  title_template_open: !input open_title_template
+  title_template_close: !input close_title_template
   include_temps: !input include_temperatures
   min_interval_minutes: !input min_notification_interval_minutes
   forecast_temp_entity: !input forecast_temperature_entity
@@ -261,15 +256,17 @@ action:
           {% set lines = lines + [entry] %}
         {% endfor %}
         {{ lines | join(' || ') }}
-      default_title_prefix: >
-        {% set prefix = title_prefix_open if action_word | trim == 'open' else title_prefix_close %}
-        {% set prefix = prefix | trim %}
-        {{ prefix if prefix else ('open windows in' if action_word | trim == 'open' else 'close windows in') }}
-      default_title: >
-        {{ default_title_prefix }} {{ indoor_area if indoor_area else 'indoor area' }}
+      selected_title_template: >
+        {% set tpl = title_template_open if action_word | trim == 'open' else title_template_close %}
+        {% set tpl = tpl | trim %}
+        {{ tpl if tpl else ('open windows in <area>' if action_word | trim == 'open' else 'close windows in <area>') }}
       notification_title: >
-        {% set custom_title = msg_title | trim %}
-        {{ custom_title if custom_title else default_title }}
+        {% set area_value = indoor_area | trim %}
+        {% if area_value %}
+          {{ selected_title_template | replace('<area>', area_value) }}
+        {% else %}
+          {{ selected_title_template | replace('<area>', 'indoor area') }}
+        {% endif %}
       notification_message: >
         {% set custom_message = msg_open if action_word | trim == 'open' else msg_close %}
         {% set custom_message = custom_message | trim %}
