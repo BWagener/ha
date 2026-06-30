@@ -51,17 +51,20 @@ blueprint:
           domain: zone
     open_message:
       name: Message when indoor temperature is above outdoor temperature
-      default: open the windows in the living room
+      description: Optional override for notification content when opening is advised.
+      default: ""
       selector:
         text:
     close_message:
       name: Message when indoor temperature is below outdoor temperature
-      default: close the windows in the living room
+      description: Optional override for notification content when closing is advised.
+      default: ""
       selector:
         text:
     notification_title:
       name: Notification title
-      default: Living room window advice
+      description: Optional override for notification title.
+      default: ""
       selector:
         text:
     include_temperatures:
@@ -133,18 +136,30 @@ action:
       }}
   - variables:
       indoor_area: "{{ area_name(indoor_entity) }}"
+      action_word: "{{ 'open' if trigger.id == 'indoor_above_outdoor' else 'close' }}"
+      default_title: >
+        {{ action_word }} windows in {{ indoor_area if indoor_area else 'indoor area' }}
+      notification_title: >
+        {% set custom_title = msg_title | trim %}
+        {{ custom_title if custom_title else default_title }}
       notification_message: >
-        {% set base_message = msg_open if trigger.id == 'indoor_above_outdoor' else msg_close %}
-        {% set base_message = base_message | trim %}
+        {% set custom_message = msg_open if trigger.id == 'indoor_above_outdoor' else msg_close %}
+        {% set custom_message = custom_message | trim %}
         {% set indoor_value = states(indoor_entity) %}
         {% set outdoor_value = states(outdoor_entity) %}
         {% set indoor_unit = state_attr(indoor_entity, 'unit_of_measurement') | default('', true) %}
         {% set outdoor_unit = state_attr(outdoor_entity, 'unit_of_measurement') | default('', true) %}
         {% set has_indoor = indoor_value not in ['unknown', 'unavailable', 'none', 'None', ''] %}
         {% set has_outdoor = outdoor_value not in ['unknown', 'unavailable', 'none', 'None', ''] %}
+        {% set diff_unit = indoor_unit if indoor_unit else outdoor_unit %}
         {% set detail_parts = [] %}
-        {% if indoor_area and not include_temps %}
-          {% set detail_parts = detail_parts + [indoor_area] %}
+        {% if custom_message %}
+          {% set base_message = custom_message %}
+        {% elif has_indoor and has_outdoor %}
+          {% set diff_value = (indoor_value | float(0)) - (outdoor_value | float(0)) %}
+          {% set base_message = 'temperature difference: ' ~ (diff_value | abs | round(1)) ~ diff_unit %}
+        {% else %}
+          {% set base_message = 'temperature difference unavailable' %}
         {% endif %}
         {% if include_temps and has_indoor %}
           {% set indoor_label = indoor_area if indoor_area else 'indoor' %}
@@ -175,5 +190,5 @@ action:
               sequence:
                 - service: "{{ repeat.item }}"
                   data:
-                    title: "{{ msg_title }}"
+                    title: "{{ notification_title | trim }}"
                     message: "{{ notification_message | trim }}"
