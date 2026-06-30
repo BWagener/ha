@@ -64,6 +64,12 @@ blueprint:
       default: Living room window advice
       selector:
         text:
+    include_temperatures:
+      name: Include indoor/outdoor temperatures
+      description: Append current indoor and outdoor values to the notification message.
+      default: true
+      selector:
+        boolean:
     debounce_minutes:
       name: Debounce time
       description: >
@@ -106,6 +112,7 @@ trigger:
 
 variables:
   indoor_entity: !input indoor_temperature
+  outdoor_entity: !input outdoor_temperature
   notify_targets: !input notify_services
   presence_targets: !input presence_entities
   required_zone_entity: !input required_zone
@@ -113,6 +120,7 @@ variables:
   msg_open: !input open_message
   msg_close: !input close_message
   msg_title: !input notification_title
+  include_temps: !input include_temperatures
   min_interval_minutes: !input min_notification_interval_minutes
 
 action:
@@ -128,8 +136,27 @@ action:
       notification_message: >
         {% set base_message = msg_open if trigger.id == 'indoor_above_outdoor' else msg_close %}
         {% set base_message = base_message | trim %}
-        {% if indoor_area %}
-          {{ base_message }} ({{ indoor_area }})
+        {% set indoor_value = states(indoor_entity) %}
+        {% set outdoor_value = states(outdoor_entity) %}
+        {% set indoor_unit = state_attr(indoor_entity, 'unit_of_measurement') | default('', true) %}
+        {% set outdoor_unit = state_attr(outdoor_entity, 'unit_of_measurement') | default('', true) %}
+        {% set has_indoor = indoor_value not in ['unknown', 'unavailable', 'none', 'None', ''] %}
+        {% set has_outdoor = outdoor_value not in ['unknown', 'unavailable', 'none', 'None', ''] %}
+        {% set detail_parts = [] %}
+        {% if indoor_area and not include_temps %}
+          {% set detail_parts = detail_parts + [indoor_area] %}
+        {% endif %}
+        {% if include_temps and has_indoor %}
+          {% set indoor_label = indoor_area if indoor_area else 'indoor' %}
+          {% set indoor_part = indoor_label ~ ': ' ~ indoor_value ~ indoor_unit %}
+          {% if has_outdoor %}
+            {% set detail_parts = detail_parts + [indoor_part ~ ', outdoor: ' ~ outdoor_value ~ outdoor_unit] %}
+          {% else %}
+            {% set detail_parts = detail_parts + [indoor_part] %}
+          {% endif %}
+        {% endif %}
+        {% if detail_parts | count > 0 %}
+          {{ base_message }} ({{ detail_parts | join(' | ') }})
         {% else %}
           {{ base_message }}
         {% endif %}
@@ -150,4 +177,3 @@ action:
                   data:
                     title: "{{ msg_title }}"
                     message: "{{ notification_message | trim }}"
-
