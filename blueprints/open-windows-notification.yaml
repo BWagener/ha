@@ -64,6 +64,28 @@ blueprint:
       default: Living room window advice
       selector:
         text:
+    debounce_minutes:
+      name: Debounce time
+      description: >
+        Condition must remain true for this many minutes before notifying.
+        Increase this to suppress flapping around the threshold.
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 60
+          step: 1
+          unit_of_measurement: min
+    min_notification_interval_minutes:
+      name: Minimum notification interval
+      description: Do not send another notification until this many minutes have passed.
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 1440
+          step: 1
+          unit_of_measurement: min
 
 mode: single
 max_exceeded: silent
@@ -73,10 +95,14 @@ trigger:
     id: indoor_above_outdoor
     entity_id: !input indoor_temperature
     above: !input outdoor_temperature
+    for:
+      minutes: !input debounce_minutes
   - platform: numeric_state
     id: indoor_below_outdoor
     entity_id: !input indoor_temperature
     below: !input outdoor_temperature
+    for:
+      minutes: !input debounce_minutes
 
 variables:
   notify_targets: !input notify_services
@@ -86,8 +112,16 @@ variables:
   msg_open: !input open_message
   msg_close: !input close_message
   msg_title: !input notification_title
+  min_interval_minutes: !input min_notification_interval_minutes
 
 action:
+  - condition: template
+    value_template: >
+      {{
+        this.attributes.last_triggered is none
+        or (as_timestamp(now()) - as_timestamp(this.attributes.last_triggered))
+           >= (min_interval_minutes | int(0) * 60)
+      }}
   - variables:
       notification_message: >
         {% if trigger.id == 'indoor_above_outdoor' %}
