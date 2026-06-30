@@ -123,6 +123,27 @@ blueprint:
           default: true
           selector:
             boolean:
+    debug_options:
+      name: Debug options
+      icon: mdi:bug
+      collapsed: true
+      input:
+        debug_enabled:
+          name: Enable debug logging
+          description: Logs decision details for forecast gate, cooldown, zone filtering, and sends.
+          default: false
+          selector:
+            boolean:
+        debug_logbook:
+          name: Write debug to logbook
+          default: true
+          selector:
+            boolean:
+        debug_persistent_notification:
+          name: Write debug as persistent notifications
+          default: false
+          selector:
+            boolean:
 
 mode: single
 max_exceeded: silent
@@ -154,25 +175,36 @@ variables:
   min_interval_minutes: !input min_notification_interval_minutes
   forecast_temp_entity: !input forecast_temperature_entity
   forecast_threshold_c: !input forecast_threshold
+  debug_enabled: !input debug_enabled
+  debug_logbook: !input debug_logbook
+  debug_persistent_notification: !input debug_persistent_notification
 
 action:
-  - condition: template
-    value_template: >
-      {% set entity_id = forecast_temp_entity | trim %}
-      {% if entity_id == '' %}
-        true
-      {% else %}
-        {% set forecast_temp = states(entity_id) | float(none) %}
-        {{ forecast_temp is not none and forecast_temp >= (forecast_threshold_c | float(21)) }}
-      {% endif %}
-  - condition: template
-    value_template: >
-      {{
-        this.attributes.last_triggered is none
-        or (as_timestamp(now()) - as_timestamp(this.attributes.last_triggered))
-           >= (min_interval_minutes | int(0) * 60)
-      }}
   - variables:
+      forecast_entity_id: "{{ forecast_temp_entity | trim }}"
+      forecast_temp: >
+        {% if forecast_entity_id == '' %}
+          {{ none }}
+        {% else %}
+          {{ states(forecast_entity_id) | float(none) }}
+        {% endif %}
+      forecast_gate_passed: >
+        {{
+          forecast_entity_id == ''
+          or (forecast_temp is not none and forecast_temp >= forecast_threshold_c)
+        }}
+      cooldown_required_seconds: "{{ (min_interval_minutes | int(0)) * 60 }}"
+      seconds_since_last: >
+        {% if this.attributes.last_triggered is none %}
+          {{ none }}
+        {% else %}
+          {{ as_timestamp(now()) - as_timestamp(this.attributes.last_triggered) }}
+        {% endif %}
+      cooldown_passed: >
+        {{
+          this.attributes.last_triggered is none
+          or seconds_since_last >= cooldown_required_seconds
+        }}
       indoor_area: "{{ area_name(indoor_entity) }}"
       zone_filtered_notify_devices: >
         {% set zone_short_name = required_zone_object_id | lower | trim %}
@@ -190,6 +222,19 @@ action:
           {% endif %}
         {% endfor %}
         {{ ns.devices }}
+      zone_debug_lines: >
+        {% set lines = [] %}
+        {% for device in notify_targets %}
+          {% set name = device_attr(device, 'name') | default(device, true) %}
+          {% set trackers = device_entities(device) | select('search', '^device_tracker\\.') | list %}
+          {% set tracker_states = [] %}
+          {% for tracker in trackers %}
+            {% set tracker_states = tracker_states + [tracker ~ '=' ~ (states(tracker) | string)] %}
+          {% endfor %}
+          {% set entry = name ~ ' -> ' ~ (tracker_states | join(', ') if tracker_states | count > 0 else 'no device_tracker entities') %}
+          {% set lines = lines + [entry] %}
+        {% endfor %}
+        {{ lines | join(' || ') }}
       action_word: "{{ 'open' if trigger.id == 'indoor_above_outdoor' else 'close' }}"
       default_title: >
         {{ action_word }} windows in {{ indoor_area if indoor_area else 'indoor area' }}
@@ -229,6 +274,91 @@ action:
         {% else %}
           {{ base_message }}
         {% endif %}
+      debug_base_message: >
+        Trigger={{ trigger.id }}, indoor={{ states(indoor_entity) }}, outdoor={{ states(outdoor_entity) }},
+        forecast_entity={{ forecast_entity_id if forecast_entity_id else 'disabled' }},
+        forecast_temp={{ forecast_temp if forecast_temp is not none else 'n/a' }},
+        forecast_threshold={{ forecast_threshold_c }},
+        forecast_gate_passed={{ forecast_gate_passed }},
+        cooldown_passed={{ cooldown_passed }},
+        seconds_since_last={{ seconds_since_last if seconds_since_last is not none else 'none' }},
+        cooldown_required_seconds={{ cooldown_required_seconds }},
+        zone={{ required_zone_object_id }},
+        selected_devices={{ notify_targets | count }},
+        in_zone_devices={{ zone_filtered_notify_devices | count }},
+        device_tracker_states={{ zone_debug_lines }}
+  - choose:
+      - conditions: "{{ debug_enabled and debug_logbook }}"
+        sequence:
+          - action: logbook.log
+            data:
+              name: Open windows notification debug
+              message: "{{ debug_base_message }}"
+              entity_id: "{{ indoor_entity }}"
+  - choose:
+      - conditions: "{{ debug_enabled and debug_persistent_notification }}"
+        sequence:
+          - action: persistent_notification.create
+            data:
+              title: Open windows notification debug
+              message: "{{ debug_base_message }}"
+  - choose:
+      - conditions: "{{ not forecast_gate_passed }}"
+        sequence:
+          - choose:
+              - conditions: "{{ debug_enabled and debug_logbook }}"
+                sequence:
+                  - action: logbook.log
+                    data:
+                      name: Open windows notification blocked
+                      message: "Blocked by forecast threshold."
+                      entity_id: "{{ indoor_entity }}"
+          - choose:
+              - conditions: "{{ debug_enabled and debug_persistent_notification }}"
+                sequence:
+                  - action: persistent_notification.create
+                    data:
+                      title: Open windows notification blocked
+                      message: "Blocked by forecast threshold."
+          - stop: Blocked by forecast threshold
+  - choose:
+      - conditions: "{{ not cooldown_passed }}"
+        sequence:
+          - choose:
+              - conditions: "{{ debug_enabled and debug_logbook }}"
+                sequence:
+                  - action: logbook.log
+                    data:
+                      name: Open windows notification blocked
+                      message: "Blocked by minimum notification interval."
+                      entity_id: "{{ indoor_entity }}"
+          - choose:
+              - conditions: "{{ debug_enabled and debug_persistent_notification }}"
+                sequence:
+                  - action: persistent_notification.create
+                    data:
+                      title: Open windows notification blocked
+                      message: "Blocked by minimum notification interval."
+          - stop: Blocked by minimum notification interval
+  - choose:
+      - conditions: "{{ (zone_filtered_notify_devices | count) == 0 }}"
+        sequence:
+          - choose:
+              - conditions: "{{ debug_enabled and debug_logbook }}"
+                sequence:
+                  - action: logbook.log
+                    data:
+                      name: Open windows notification blocked
+                      message: "No selected notification devices currently in zone."
+                      entity_id: "{{ indoor_entity }}"
+          - choose:
+              - conditions: "{{ debug_enabled and debug_persistent_notification }}"
+                sequence:
+                  - action: persistent_notification.create
+                    data:
+                      title: Open windows notification blocked
+                      message: "No selected notification devices currently in zone."
+          - stop: No notification devices in zone
   - repeat:
       for_each: "{{ zone_filtered_notify_devices }}"
       sequence:
@@ -237,3 +367,13 @@ action:
             title: "{{ notification_title | trim }}"
             message: "{{ notification_message | trim }}"
           continue_on_error: true
+  - choose:
+      - conditions: "{{ debug_enabled and debug_logbook }}"
+        sequence:
+          - action: logbook.log
+            data:
+              name: Open windows notification sent
+              message: >
+                Sent to {{ zone_filtered_notify_devices | count }} device(s):
+                {{ zone_filtered_notify_devices | join(', ') }}
+              entity_id: "{{ indoor_entity }}"
