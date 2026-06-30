@@ -1,5 +1,5 @@
 blueprint:
-  name: Living Room Window Advice from Temperature Comparison
+  name: Temperature-difference-based open windows notification
   author: BWagener
   description: >
     Sends a notification when one temperature sensor rises above or falls below another.
@@ -150,3 +150,4 @@ action:
                   data:
                     title: "{{ msg_title }}"
                     message: "{{ notification_message | trim }}"
+
