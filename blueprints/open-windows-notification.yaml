@@ -250,21 +250,25 @@ action:
         {% set outdoor_unit = state_attr(outdoor_entity, 'unit_of_measurement') | default('', true) %}
         {% set has_indoor = indoor_value not in ['unknown', 'unavailable', 'none', 'None', ''] %}
         {% set has_outdoor = outdoor_value not in ['unknown', 'unavailable', 'none', 'None', ''] %}
+        {% set indoor_num = indoor_value | float(0) %}
+        {% set outdoor_num = outdoor_value | float(0) %}
+        {% set indoor_value_1dp = '%.1f' | format(indoor_num) %}
+        {% set outdoor_value_1dp = '%.1f' | format(outdoor_num) %}
         {% set diff_unit = indoor_unit if indoor_unit else outdoor_unit %}
         {% set detail_parts = [] %}
         {% if custom_message %}
           {% set base_message = custom_message %}
         {% elif has_indoor and has_outdoor %}
-          {% set diff_value = (indoor_value | float(0)) - (outdoor_value | float(0)) %}
-          {% set base_message = 'temperature difference: ' ~ (diff_value | abs | round(1)) ~ diff_unit %}
+          {% set diff_value = (indoor_num - outdoor_num) | abs %}
+          {% set base_message = 'temperature difference: ' ~ ('%.1f' | format(diff_value)) ~ diff_unit %}
         {% else %}
           {% set base_message = 'temperature difference unavailable' %}
         {% endif %}
         {% if include_temps and has_indoor %}
           {% set indoor_label = indoor_area if indoor_area else 'indoor' %}
-          {% set indoor_part = indoor_label ~ ': ' ~ indoor_value ~ indoor_unit %}
+          {% set indoor_part = indoor_label ~ ': ' ~ indoor_value_1dp ~ indoor_unit %}
           {% if has_outdoor %}
-            {% set detail_parts = detail_parts + [indoor_part ~ ', outdoor: ' ~ outdoor_value ~ outdoor_unit] %}
+            {% set detail_parts = detail_parts + [indoor_part ~ ', outdoor: ' ~ outdoor_value_1dp ~ outdoor_unit] %}
           {% else %}
             {% set detail_parts = detail_parts + [indoor_part] %}
           {% endif %}
