@@ -1,0 +1,114 @@
+blueprint:
+  name: Living Room Window Advice from Temperature Comparison
+  author: BWagener
+  description: >
+    Sends a notification when one temperature sensor rises above or falls below another.
+    "Open windows" is sent when indoor temperature is above outdoor temperature;
+    "Close windows" is sent when indoor temperature is below outdoor temperature.
+    Notifications are sent only to people/device_trackers currently inside the selected zone.
+    Presence entities and notify services are matched by list position.
+  domain: automation
+  input:
+    indoor_temperature:
+      name: Indoor temperature entity
+      description: Indoor temperature to compare with outdoor temperature.
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    outdoor_temperature:
+      name: Outdoor temperature entity
+      description: Outdoor temperature used as comparison baseline.
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    notify_services:
+      name: Notification services (ordered)
+      description: >
+        Select one notify entity per tracked person/device (for example notify.mobile_app_*).
+        This list is matched by position with Presence entities.
+      selector:
+        entity:
+          domain: notify
+          multiple: true
+    presence_entities:
+      name: Presence entities (ordered)
+      description: >
+        Select one or more person/device_tracker entities. This list is matched by position
+        with Notification services.
+      selector:
+        entity:
+          domain:
+            - person
+            - device_tracker
+          multiple: true
+    required_zone:
+      name: Required zone
+      description: Notifications are sent only when the mapped presence entity is in this zone.
+      selector:
+        entity:
+          domain: zone
+    open_message:
+      name: Message when indoor temperature is above outdoor temperature
+      default: open the windows in the living room
+      selector:
+        text:
+    close_message:
+      name: Message when indoor temperature is below outdoor temperature
+      default: close the windows in the living room
+      selector:
+        text:
+    notification_title:
+      name: Notification title
+      default: Living room window advice
+      selector:
+        text:
+
+mode: single
+max_exceeded: silent
+
+trigger:
+  - platform: numeric_state
+    id: indoor_above_outdoor
+    entity_id: !input indoor_temperature
+    above: !input outdoor_temperature
+  - platform: numeric_state
+    id: indoor_below_outdoor
+    entity_id: !input indoor_temperature
+    below: !input outdoor_temperature
+
+variables:
+  notify_targets: !input notify_services
+  presence_targets: !input presence_entities
+  required_zone_entity: !input required_zone
+  required_zone_object_id: "{{ required_zone_entity.split('.')[1] }}"
+  msg_open: !input open_message
+  msg_close: !input close_message
+  msg_title: !input notification_title
+
+action:
+  - variables:
+      notification_message: >
+        {% if trigger.id == 'indoor_above_outdoor' %}
+          {{ msg_open }}
+        {% else %}
+          {{ msg_close }}
+        {% endif %}
+  - repeat:
+      for_each: "{{ notify_targets }}"
+      sequence:
+        - variables:
+            mapped_presence: >
+              {% set idx = repeat.index - 1 %}
+              {{ presence_targets[idx] if idx < (presence_targets | count) else none }}
+        - choose:
+            - conditions:
+                - condition: template
+                  value_template: >
+                    {{ mapped_presence is not none and states(mapped_presence) == required_zone_object_id }}
+              sequence:
+                - service: "{{ repeat.item }}"
+                  data:
+                    title: "{{ msg_title }}"
+                    message: "{{ notification_message | trim }}"
