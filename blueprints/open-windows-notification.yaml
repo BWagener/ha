@@ -49,52 +49,62 @@ blueprint:
       selector:
         entity:
           domain: zone
-    open_message:
-      name: Message when indoor temperature is above outdoor temperature
-      description: Optional override for notification content when opening is advised.
-      default: ""
-      selector:
-        text:
-    close_message:
-      name: Message when indoor temperature is below outdoor temperature
-      description: Optional override for notification content when closing is advised.
-      default: ""
-      selector:
-        text:
-    notification_title:
-      name: Notification title
-      description: Optional override for notification title.
-      default: ""
-      selector:
-        text:
-    include_temperatures:
-      name: Include indoor/outdoor temperatures
-      description: Append current indoor and outdoor values to the notification message.
-      default: true
-      selector:
-        boolean:
-    debounce_minutes:
-      name: Debounce time
-      description: >
-        Condition must remain true for this many minutes before notifying.
-        Increase this to suppress flapping around the threshold.
-      default: 5
-      selector:
-        number:
-          min: 0
-          max: 60
-          step: 1
-          unit_of_measurement: min
-    min_notification_interval_minutes:
-      name: Minimum notification interval
-      description: Do not send another notification until this many minutes have passed.
-      default: 30
-      selector:
-        number:
-          min: 0
-          max: 1440
-          step: 1
-          unit_of_measurement: min
+    debounce_options:
+      name: Debounce options
+      icon: mdi:timer-cog
+      collapsed: true
+      input:
+        debounce_minutes:
+          name: Debounce time
+          description: >
+            Condition must remain true for this many minutes before notifying.
+            Increase this to suppress flapping around the threshold.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 60
+              step: 1
+              unit_of_measurement: min
+        min_notification_interval_minutes:
+          name: Minimum notification interval
+          description: Do not send another notification until this many minutes have passed.
+          default: 30
+          selector:
+            number:
+              min: 0
+              max: 1440
+              step: 1
+              unit_of_measurement: min
+    notification_content:
+      name: Notification content
+      icon: mdi:message-text
+      collapsed: true
+      input:
+        open_message:
+          name: Message when indoor temperature is above outdoor temperature
+          description: Optional override for notification content when opening is advised.
+          default: ""
+          selector:
+            text:
+        close_message:
+          name: Message when indoor temperature is below outdoor temperature
+          description: Optional override for notification content when closing is advised.
+          default: ""
+          selector:
+            text:
+        notification_title:
+          name: Notification title
+          description: Optional override for notification title.
+          default: ""
+          selector:
+            text:
+        include_temperatures:
+          name: Include indoor/outdoor temperatures
+          description: Append current indoor and outdoor values to the notification message.
+          default: true
+          selector:
+            boolean:
 
 mode: single
 max_exceeded: silent
