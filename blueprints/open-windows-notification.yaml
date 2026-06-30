@@ -57,18 +57,19 @@ blueprint:
       icon: mdi:weather-partly-cloudy
       collapsed: true
       input:
-        forecast_entity:
-          name: Forecast entity
+        forecast_temperature_entity:
+          name: Forecast max temperature entity
           description: >
-            Optional weather entity used to gate notifications. If set, notifications are only
-            active when the highest forecast temperature is at or above the threshold.
+            Optional temperature sensor used to gate notifications. Create a template sensor via weather.get_forecasts
+            (for example tomorrow max temperature) and select it here. Example: https://community.home-assistant.io/t/max-temperature-forecast/743936/2
           default: ""
           selector:
             entity:
-              domain: weather
+              domain: sensor
+              device_class: temperature
         forecast_threshold:
           name: Forecast activation threshold
-          description: Notifications are active only when highest forecast temperature meets this.
+          description: Notifications are active only when forecast temperature meets this.
           default: 21
           selector:
             number:
@@ -162,25 +163,18 @@ variables:
   msg_title: !input notification_title
   include_temps: !input include_temperatures
   min_interval_minutes: !input min_notification_interval_minutes
-  forecast_weather_entity: !input forecast_entity
+  forecast_temp_entity: !input forecast_temperature_entity
   forecast_threshold_c: !input forecast_threshold
 
 action:
   - condition: template
     value_template: >
-      {% set entity_id = forecast_weather_entity | trim %}
+      {% set entity_id = forecast_temp_entity | trim %}
       {% if entity_id == '' %}
         true
       {% else %}
-        {% set forecast_list = state_attr(entity_id, 'forecast') or [] %}
-        {% set ns = namespace(max_temp = none) %}
-        {% for item in forecast_list if item is mapping and item.temperature is defined %}
-          {% set t = item.temperature | float(none) %}
-          {% if t is not none and (ns.max_temp is none or t > ns.max_temp) %}
-            {% set ns.max_temp = t %}
-          {% endif %}
-        {% endfor %}
-        {{ ns.max_temp is not none and ns.max_temp >= (forecast_threshold_c | float(21)) }}
+        {% set forecast_temp = states(entity_id) | float(none) %}
+        {{ forecast_temp is not none and forecast_temp >= (forecast_threshold_c | float(21)) }}
       {% endif %}
   - condition: template
     value_template: >
