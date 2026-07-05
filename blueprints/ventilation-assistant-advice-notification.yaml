@@ -116,9 +116,12 @@ action:
             {% set seconds_in_state = as_timestamp(now()) - as_timestamp(states[advice_entity].last_changed) %}
             {% if advice_state in ['open', 'close'] and seconds_in_state >= duration_seconds %}
               {% set device_name = device_attr(device, 'name') | default(device, true) %}
+              {% set advice_state_human = state_translated(advice_entity) | default(advice_state | replace('_', ' ') | title, true) %}
               {% set projected_entity = advice_entity | replace('_advice', '_projected_indoor_temperature_difference') %}
               {% set projected_state = states(projected_entity) | string %}
-              {% set ns.lines = ns.lines + [device_name ~ ': ' ~ advice_state ~ ' (' ~ projected_state ~ ')'] %}
+              {% set projected_unit = state_attr(projected_entity, 'unit_of_measurement') | default('', true) %}
+              {% set projected_display = projected_state ~ ((' ' ~ projected_unit) if projected_unit else '') %}
+              {% set ns.lines = ns.lines + [device_name ~ ': ' ~ advice_state_human ~ ' (' ~ projected_display ~ ')'] %}
             {% endif %}
           {% endif %}
         {% endfor %}
