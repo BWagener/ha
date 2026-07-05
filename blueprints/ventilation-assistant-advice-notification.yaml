@@ -9,12 +9,12 @@ blueprint:
   input:
     ventilation_assistant_devices:
       name: Ventilation Assistant devices
-      description: Select one or more devices from the ventilation_assistant domain.
+      description: Select one or more devices from the ventilation_assistant integration.
       default: []
       selector:
         device:
-          entity:
-            - domain: ventilation_assistant
+          filter:
+            - integration: ventilation_assistant
           multiple: true
     notify_devices:
       name: Notification devices
@@ -58,29 +58,13 @@ blueprint:
 mode: single
 max_exceeded: silent
 
-trigger_variables:
-  ventilation_targets: !input ventilation_assistant_devices
-  advice_entities: >
-    {% set ns = namespace(items=[]) %}
-    {% for device in ventilation_targets %}
-      {% set advice_entity = (device_entities(device) | select('search', '^sensor\\..+_advice$') | list | first) %}
-      {% if advice_entity %}
-        {% set ns.items = ns.items + [advice_entity] %}
-      {% endif %}
-    {% endfor %}
-    {{ ns.items }}
-
 trigger:
-  - platform: state
-    entity_id: "{{ advice_entities }}"
-    to:
-      - Open
-      - Close
-    for:
-      minutes: !input advice_duration_minutes
+  - platform: time_pattern
+    minutes: "/1"
 
 action:
   - variables:
+      ventilation_targets: !input ventilation_assistant_devices
       notify_targets: !input notify_devices
       required_zone_entity: !input required_zone
       required_zone_object_id: "{{ required_zone_entity.split('.')[1] }}"
