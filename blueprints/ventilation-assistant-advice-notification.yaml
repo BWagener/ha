@@ -13,9 +13,8 @@ blueprint:
       default: []
       selector:
         device:
-          filter:
-            - entity:
-                domain: ventilation_assistant
+          entity:
+            - domain: ventilation_assistant
           multiple: true
     notify_devices:
       name: Notification devices
