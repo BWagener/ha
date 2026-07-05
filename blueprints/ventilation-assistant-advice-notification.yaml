@@ -1,0 +1,156 @@
+blueprint:
+  name: Ventilation Assistant advice notification
+  author: BWagener
+  description: >
+    Sends notifications for selected ventilation assistant devices when their
+    sensor.<device>_advice entity is in state Open or Close for a configured
+    duration.
+  domain: automation
+  input:
+    ventilation_assistant_devices:
+      name: Ventilation Assistant devices
+      description: Select one or more devices from the ventilation_assistant domain.
+      default: []
+      selector:
+        device:
+          filter:
+            - entity:
+                domain: ventilation_assistant
+          multiple: true
+    notify_devices:
+      name: Notification devices
+      description: >
+        Select one or more mobile app devices to notify.
+        Each selected device is notified only if one of its device_tracker entities is in the selected zone.
+      default: []
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+          multiple: true
+    required_zone:
+      name: Zone for presence check
+      description: Notifications are sent only when the mapped presence entity is in this zone.
+      default: zone.home
+      selector:
+        entity:
+          domain: zone
+    advice_duration_minutes:
+      name: Advice state duration
+      description: Advice must remain Open or Close for this many minutes before notifying.
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 60
+          step: 1
+          unit_of_measurement: min
+    min_notification_interval_minutes:
+      name: Minimum notification interval
+      description: Do not send another notification until this many minutes have passed.
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 1440
+          step: 1
+          unit_of_measurement: min
+
+mode: single
+max_exceeded: silent
+
+trigger_variables:
+  ventilation_targets: !input ventilation_assistant_devices
+  advice_entities: >
+    {% set ns = namespace(items=[]) %}
+    {% for device in ventilation_targets %}
+      {% set advice_entity = (device_entities(device) | select('search', '^sensor\\..+_advice$') | list | first) %}
+      {% if advice_entity %}
+        {% set ns.items = ns.items + [advice_entity] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.items }}
+
+trigger:
+  - platform: state
+    entity_id: "{{ advice_entities }}"
+    to:
+      - Open
+      - Close
+    for:
+      minutes: !input advice_duration_minutes
+
+action:
+  - variables:
+      notify_targets: !input notify_devices
+      required_zone_entity: !input required_zone
+      required_zone_object_id: "{{ required_zone_entity.split('.')[1] }}"
+      min_interval_minutes: !input min_notification_interval_minutes
+      advice_duration_minutes: !input advice_duration_minutes
+      advice_duration_seconds: "{{ (advice_duration_minutes | int(0)) * 60 }}"
+      cooldown_required_seconds: "{{ (min_interval_minutes | int(0)) * 60 }}"
+      seconds_since_last: >
+        {% if this.attributes.last_triggered is none %}
+          {{ none }}
+        {% else %}
+          {{ as_timestamp(now()) - as_timestamp(this.attributes.last_triggered) }}
+        {% endif %}
+      cooldown_passed: >
+        {{
+          this.attributes.last_triggered is none
+          or seconds_since_last >= cooldown_required_seconds
+        }}
+      zone_filtered_notify_devices: >
+        {% set zone_short_name = required_zone_object_id | lower | trim %}
+        {% set ns = namespace(devices=[]) %}
+        {% for device in notify_targets %}
+          {% set device_status = namespace(in_zone=false) %}
+          {% set trackers = device_entities(device) | select('search', '^device_tracker\\.') | list %}
+          {% for tracker in trackers %}
+            {% if (states(tracker) | string).lower().strip() == zone_short_name %}
+              {% set device_status.in_zone = true %}
+            {% endif %}
+          {% endfor %}
+          {% if device_status.in_zone %}
+            {% set ns.devices = ns.devices + [device] %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.devices }}
+      advice_lines: >
+        {% set duration_seconds = advice_duration_seconds | int(0) %}
+        {% set ns = namespace(lines=[]) %}
+        {% for device in ventilation_targets %}
+          {% set advice_entity = (device_entities(device) | select('search', '^sensor\\..+_advice$') | list | first) %}
+          {% if advice_entity %}
+            {% set advice_state = states(advice_entity) | string %}
+            {% set seconds_in_state = as_timestamp(now()) - as_timestamp(states[advice_entity].last_changed) %}
+            {% if advice_state in ['Open', 'Close'] and seconds_in_state >= duration_seconds %}
+              {% set device_name = device_attr(device, 'name') | default(device, true) %}
+              {% set projected_entity = advice_entity | replace('_advice', '_projected_indoor_temperature_difference') %}
+              {% set ns.lines = ns.lines + [device_name ~ ': ' ~ advice_entity ~ ' (' ~ projected_entity ~ ')'] %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.lines }}
+      notification_title: Ventilation Assistant
+      notification_message: "{{ advice_lines | join('\\n') }}"
+  - choose:
+      - conditions: "{{ not cooldown_passed }}"
+        sequence:
+          - stop: Blocked by minimum notification interval
+  - choose:
+      - conditions: "{{ (zone_filtered_notify_devices | count) == 0 }}"
+        sequence:
+          - stop: No notification devices in zone
+  - choose:
+      - conditions: "{{ (advice_lines | count) == 0 }}"
+        sequence:
+          - stop: No matching advice entities
+  - repeat:
+      for_each: "{{ zone_filtered_notify_devices }}"
+      sequence:
+        - action: "notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}"
+          data:
+            title: "{{ notification_title }}"
+            message: "{{ notification_message }}"
+          continue_on_error: true
