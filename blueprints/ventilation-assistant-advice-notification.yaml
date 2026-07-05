@@ -103,14 +103,22 @@ action:
         {% set duration_seconds = advice_duration_seconds | int(0) %}
         {% set ns = namespace(lines=[]) %}
         {% for device in ventilation_targets %}
-          {% set advice_entity = (device_entities(device) | select('search', '^sensor\\..+_advice$') | list | first) %}
+          {% set device_sensor_entities = device_entities(device) | select('search', '^sensor\\.') | list %}
+          {% set advice_entity = (
+            device_sensor_entities
+            | select('search', '^sensor\\..+_advice$')
+            | reject('search', '^sensor\\..+_(temperature|humidity)_advice$')
+            | list
+            | first
+          ) %}
           {% if advice_entity %}
             {% set advice_state = states(advice_entity) | string %}
             {% set seconds_in_state = as_timestamp(now()) - as_timestamp(states[advice_entity].last_changed) %}
-            {% if advice_state in ['Open', 'Close'] and seconds_in_state >= duration_seconds %}
+            {% if advice_state in ['open', 'close'] and seconds_in_state >= duration_seconds %}
               {% set device_name = device_attr(device, 'name') | default(device, true) %}
               {% set projected_entity = advice_entity | replace('_advice', '_projected_indoor_temperature_difference') %}
-              {% set ns.lines = ns.lines + [device_name ~ ': ' ~ advice_entity ~ ' (' ~ projected_entity ~ ')'] %}
+              {% set projected_state = states(projected_entity) | string %}
+              {% set ns.lines = ns.lines + [device_name ~ ': ' ~ advice_state ~ ' (' ~ projected_state ~ ')'] %}
             {% endif %}
           {% endif %}
         {% endfor %}
