@@ -1,0 +1,44 @@
+blueprint:
+  name: IR Learnmode
+  description: Keep IR learning mode active for a selected Zigbee2MQTT IR blaster.
+  domain: automation
+  input:
+    ir_blaster_device:
+      name: IR blaster device
+      description: Select the Zigbee2MQTT IR blaster device.
+      selector:
+        device:
+          filter:
+            - integration: mqtt
+          multiple: false
+
+mode: single
+
+trigger_variables:
+  ir_blaster_device: !input ir_blaster_device
+  ir_blaster_name: "{{ device_attr(ir_blaster_device, 'name') }}"
+
+variables:
+  ir_blaster_learn_button: >-
+    {{ device_entities(ir_blaster_device)
+       | select('match', '^button\\..*_switch_learn_ir_code$')
+       | list
+       | first }}
+
+triggers:
+  - trigger: time_pattern
+    seconds: "/20"
+  - trigger: mqtt
+    topic: "zigbee2mqtt/{{ ir_blaster_name }}"
+
+conditions:
+  - condition: template
+    value_template: >
+      {{ trigger.platform != 'mqtt'
+         or trigger.payload_json.learned_ir_timings is defined
+      }}
+
+actions:
+  - action: button.press
+    target:
+      entity_id: "{{ ir_blaster_learn_button }}"
