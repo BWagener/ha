@@ -11,17 +11,43 @@ blueprint:
           filter:
             - integration: mqtt
           multiple: false
+    auto_disable_enabled:
+      name: Auto-disable after timeout
+      description: Turn the automation off automatically after the timeout.
+      default: true
+      selector:
+        boolean: {}
+    auto_disable_timeout_minutes:
+      name: Auto-disable timeout (minutes)
+      description: Timeout before turning the automation off.
+      default: 15
+      selector:
+        number:
+          min: 1
+          max: 240
+          step: 1
+          unit_of_measurement: min
+          mode: box
 
 mode: single
 
 variables:
   ir_blaster_device: !input ir_blaster_device
+  auto_disable_enabled: !input auto_disable_enabled
+  auto_disable_timeout_minutes: !input auto_disable_timeout_minutes
   ir_blaster_name: "{{ device_attr(ir_blaster_device, 'name') }}"
   ir_blaster_learn_button: >-
     {{ device_entities(ir_blaster_device)
        | select('match', '^button\\..*_switch_learn_ir_code$')
        | list
        | first }}
+  should_auto_disable_now: >-
+    {{ auto_disable_enabled
+       and (
+         as_timestamp(now())
+         - as_timestamp(states[this.entity_id].last_changed)
+       ) >= (auto_disable_timeout_minutes | int(15) * 60)
+    }}
 
 triggers:
   - trigger: time_pattern
@@ -40,6 +66,15 @@ conditions:
       }}
 
 actions:
-  - action: button.press
-    target:
-      entity_id: "{{ ir_blaster_learn_button }}"
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ should_auto_disable_now }}"
+        sequence:
+          - action: automation.turn_off
+            target:
+              entity_id: "{{ this.entity_id }}"
+    default:
+      - action: button.press
+        target:
+          entity_id: "{{ ir_blaster_learn_button }}"
