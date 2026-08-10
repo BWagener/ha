@@ -1,11 +1,11 @@
 blueprint:
   name: IR Learnmode
-  description: Keep IR learning mode active for a selected Zigbee2MQTT IR blaster.
+  description: Keep IR learning mode active for a selected Zigbee2MQTT IR receiver.
   domain: automation
   input:
-    ir_blaster_device:
-      name: IR blaster device
-      description: Select the Zigbee2MQTT IR blaster device.
+    ir_receiver_device:
+      name: IR receiver device
+      description: Select the Zigbee2MQTT IR receiver device.
       selector:
         device:
           filter:
@@ -32,12 +32,12 @@ blueprint:
 mode: single
 
 variables:
-  ir_blaster_device: !input ir_blaster_device
+  ir_receiver_device: !input ir_receiver_device
   auto_disable_enabled: !input auto_disable_enabled
   auto_disable_timeout_minutes: !input auto_disable_timeout_minutes
-  ir_blaster_name: "{{ device_attr(ir_blaster_device, 'name') }}"
-  ir_blaster_learn_button: >-
-    {{ device_entities(ir_blaster_device)
+  ir_receiver_name: "{{ device_attr(ir_receiver_device, 'name') }}"
+  ir_receiver_learn_button: >-
+    {{ device_entities(ir_receiver_device)
        | select('match', '^button\\..*_switch_learn_ir_code$')
        | list
        | first }}
@@ -60,7 +60,7 @@ conditions:
     value_template: >
       {{ trigger.platform != 'mqtt'
          or (
-           trigger.topic == 'zigbee2mqtt/' ~ ir_blaster_name
+           trigger.topic == 'zigbee2mqtt/' ~ ir_receiver_name
            and trigger.payload_json.learned_ir_timings is defined
          )
       }}
@@ -77,4 +77,4 @@ actions:
     default:
       - action: button.press
         target:
-          entity_id: "{{ ir_blaster_learn_button }}"
+          entity_id: "{{ ir_receiver_learn_button }}"
